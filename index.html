@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="sv">
+<html lang="sv" class="dark">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
@@ -7,6 +7,11 @@
   
   <!-- Tailwind CSS -->
   <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+    }
+  </script>
   
   <!-- FontAwesome Icons -->
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
@@ -21,69 +26,73 @@
   <style>
     body {
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-      background-color: #f8fafc;
       -webkit-tap-highlight-color: transparent;
     }
   </style>
 </head>
-<body class="pb-12 text-slate-800">
+<body class="pb-12 bg-slate-50 dark:bg-slate-950 text-slate-800 dark:text-slate-100 transition-colors duration-200">
 
   <!-- Header -->
-  <header class="bg-amber-900 text-white shadow-lg sticky top-0 z-40">
+  <header class="bg-amber-900 dark:bg-amber-950 text-white shadow-lg sticky top-0 z-40 border-b border-amber-800/40">
     <div class="max-w-xl mx-auto px-4 py-3 flex items-center justify-between">
       <div class="flex items-center space-x-3">
-        <div class="bg-amber-800 p-2 rounded-xl text-amber-200">
+        <div class="bg-amber-800 dark:bg-amber-900 p-2 rounded-xl text-amber-200">
           <i class="fa-solid fa-drumstick-bite text-2xl"></i>
         </div>
         <div>
           <h1 class="font-bold text-lg leading-tight">Köttkassan</h1>
-          <p class="text-xs text-amber-200 flex items-center gap-1">
-            <span class="inline-block w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-            Synkad i realtid
+          <p class="text-xs text-amber-200/80 flex items-center gap-1">
+            <span id="syncIndicator" class="inline-block w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+            <span id="syncText">Ansluter till moln...</span>
           </p>
         </div>
       </div>
 
-      <!-- Välj användare -->
-      <button onclick="changeUser()" class="bg-amber-800/80 hover:bg-amber-800 text-amber-100 text-xs px-3 py-1.5 rounded-full border border-amber-700/50 flex items-center gap-1.5 transition">
-        <i class="fa-solid fa-user-circle text-amber-300"></i>
-        <span id="currentUserLabel">Aron</span>
-      </button>
+      <!-- Höger meny: Mörkt läge & Användare -->
+      <div class="flex items-center gap-2">
+        <button onclick="toggleDarkMode()" title="Växla mörkt läge" class="bg-amber-800/80 hover:bg-amber-800 text-amber-100 w-9 h-9 rounded-full border border-amber-700/50 flex items-center justify-center transition">
+          <i id="darkModeIcon" class="fa-solid fa-moon text-amber-300"></i>
+        </button>
+        <button onclick="changeUser()" class="bg-amber-800/80 hover:bg-amber-800 text-amber-100 text-xs px-3 py-1.5 rounded-full border border-amber-700/50 flex items-center gap-1.5 transition">
+          <i class="fa-solid fa-user-circle text-amber-300"></i>
+          <span id="currentUserLabel">Aron</span>
+        </button>
+      </div>
     </div>
   </header>
 
   <main class="max-w-xl mx-auto px-4 pt-4 space-y-4">
 
     <!-- Total översikt kort -->
-    <div class="bg-white rounded-2xl p-5 shadow-sm border border-slate-200/80">
+    <div class="bg-white dark:bg-slate-900 rounded-2xl p-5 shadow-sm border border-slate-200/80 dark:border-slate-800">
       <div class="flex justify-between items-start mb-3">
         <div>
-          <span class="text-xs font-semibold uppercase tracking-wider text-slate-400">Totalt Köttlager</span>
+          <span class="text-xs font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500">Totalt Köttlager</span>
           <div class="flex items-baseline gap-1 mt-0.5">
-            <span id="statRemainingKg" class="text-3xl font-extrabold text-slate-900">60,0</span>
-            <span class="text-slate-500 font-medium">/ 60 kg kvar</span>
+            <span id="statRemainingKg" class="text-3xl font-extrabold text-slate-900 dark:text-white">60,0</span>
+            <span class="text-slate-500 dark:text-slate-400 font-medium">/ 60 kg kvar</span>
           </div>
         </div>
         <div class="text-right">
-          <span class="text-xs font-semibold uppercase tracking-wider text-amber-700">Obetalt</span>
-          <div id="statTotalUnpaid" class="text-xl font-bold text-amber-600 mt-0.5">0 kr</div>
+          <span class="text-xs font-semibold uppercase tracking-wider text-amber-700 dark:text-amber-400">Obetalt</span>
+          <div id="statTotalUnpaid" class="text-xl font-bold text-amber-600 dark:text-amber-400 mt-0.5">0 kr</div>
         </div>
       </div>
 
       <!-- Progress bar -->
-      <div class="w-full bg-slate-100 h-3 rounded-full overflow-hidden p-0.5 border border-slate-200/60">
-        <div id="progressBar" class="bg-amber-600 h-full rounded-full transition-all duration-500" style="width: 0%"></div>
+      <div class="w-full bg-slate-100 dark:bg-slate-800 h-3 rounded-full overflow-hidden p-0.5 border border-slate-200/60 dark:border-slate-700">
+        <div id="progressBar" class="bg-amber-600 dark:bg-amber-500 h-full rounded-full transition-all duration-500" style="width: 0%"></div>
       </div>
-      <div class="flex justify-between text-xs text-slate-400 mt-1.5 font-medium">
+      <div class="flex justify-between text-xs text-slate-400 dark:text-slate-500 mt-1.5 font-medium">
         <span id="statUsedKg">Uttaget: 0,0 kg</span>
         <span>Mål: 60 kg</span>
       </div>
     </div>
 
     <!-- Registrera uttag -->
-    <div class="bg-white rounded-2xl p-5 shadow-sm border border-slate-200/80">
-      <h2 class="text-base font-bold text-slate-900 mb-4 flex items-center gap-2">
-        <div class="w-7 h-7 rounded-lg bg-amber-100 text-amber-800 flex items-center justify-center text-xs">
+    <div class="bg-white dark:bg-slate-900 rounded-2xl p-5 shadow-sm border border-slate-200/80 dark:border-slate-800">
+      <h2 class="text-base font-bold text-slate-900 dark:text-white mb-4 flex items-center gap-2">
+        <div class="w-7 h-7 rounded-lg bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-300 flex items-center justify-center text-xs">
           <i class="fa-solid fa-plus"></i>
         </div>
         Registrera köttuttag
@@ -92,25 +101,24 @@
       <form id="entryForm" onsubmit="saveEntry(event)" class="space-y-4">
         
         <div>
-          <label class="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Vem tar kött?</label>
+          <label class="block text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1">Vem tar kött?</label>
           <div class="grid grid-cols-3 gap-2 mb-2" id="quickNameButtons">
-            <button type="button" onclick="selectName('Aron')" class="name-btn bg-amber-50 border-2 border-amber-600 text-amber-900 font-medium py-2 rounded-xl text-sm transition">Aron</button>
-            <button type="button" onclick="selectName('Mamma')" class="name-btn bg-slate-50 border border-slate-200 text-slate-700 font-medium py-2 rounded-xl text-sm transition">Mamma</button>
-            <button type="button" onclick="selectName('Pappa')" class="name-btn bg-slate-50 border border-slate-200 text-slate-700 font-medium py-2 rounded-xl text-sm transition">Pappa</button>
+            <button type="button" onclick="selectName('Aron')" class="name-btn bg-amber-50 dark:bg-amber-950/40 border-2 border-amber-600 text-amber-900 dark:text-amber-200 font-medium py-2 rounded-xl text-sm transition">Aron</button>
+            <button type="button" onclick="selectName('Mamma')" class="name-btn bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 font-medium py-2 rounded-xl text-sm transition">Mamma</button>
+            <button type="button" onclick="selectName('Pappa')" class="name-btn bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 font-medium py-2 rounded-xl text-sm transition">Pappa</button>
           </div>
-          <input type="text" id="inputName" required placeholder="Eller skriv namn..." class="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 transition">
+          <input type="text" id="inputName" required placeholder="Eller skriv namn..." class="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-sm text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 transition">
         </div>
 
         <div class="grid grid-cols-2 gap-3">
           <div>
-            <label class="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Vikt i gram (g)</label>
-            <!-- OBS: step="1" gör att exakt gram som 814 kan fyllas i! -->
-            <input type="number" id="inputGram" min="1" step="1" required placeholder="t.ex. 814" oninput="calculatePrice()" class="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 transition font-semibold text-slate-800">
+            <label class="block text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1">Vikt i gram (g)</label>
+            <input type="number" id="inputGram" min="1" step="1" required placeholder="t.ex. 814" oninput="calculatePrice()" class="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 transition font-semibold text-slate-800 dark:text-white">
           </div>
           <div>
-            <label class="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Pris (120 kr/kg)</label>
+            <label class="block text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1">Pris (120 kr/kg)</label>
             <div class="relative">
-              <input type="text" id="inputPrice" readonly placeholder="0" class="w-full px-3.5 py-2.5 bg-slate-100 border border-slate-200 rounded-xl text-sm font-bold text-slate-700 focus:outline-none">
+              <input type="text" id="inputPrice" readonly placeholder="0" class="w-full px-3.5 py-2.5 bg-slate-100 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-xl text-sm font-bold text-slate-700 dark:text-slate-300 focus:outline-none">
               <span class="absolute right-3.5 top-2.5 text-xs font-semibold text-slate-400">kr</span>
             </div>
           </div>
@@ -118,21 +126,21 @@
 
         <div class="grid grid-cols-2 gap-3">
           <div>
-            <label class="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Datum</label>
-            <input type="date" id="inputDate" required class="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 transition text-slate-700">
+            <label class="block text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1">Datum</label>
+            <input type="date" id="inputDate" required class="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 transition text-slate-700 dark:text-white dark:[color-scheme:dark]">
           </div>
           <div>
-            <label class="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Anteckning (valfri)</label>
-            <input type="text" id="inputNote" placeholder="t.ex. Färs, Ryggbiff" class="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 transition">
+            <label class="block text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1">Anteckning (valfri)</label>
+            <input type="text" id="inputNote" placeholder="t.ex. Färs, Ryggbiff" class="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-sm text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 transition">
           </div>
         </div>
 
         <div class="flex items-center gap-2 pt-1">
-          <input type="checkbox" id="inputPaid" class="w-4 h-4 text-amber-600 rounded border-slate-300 focus:ring-amber-500">
-          <label for="inputPaid" class="text-sm font-medium text-slate-700 cursor-pointer">Betald direkt vid uttag</label>
+          <input type="checkbox" id="inputPaid" class="w-4 h-4 text-amber-600 rounded border-slate-300 dark:border-slate-700 focus:ring-amber-500">
+          <label for="inputPaid" class="text-sm font-medium text-slate-700 dark:text-slate-300 cursor-pointer">Betald direkt vid uttag</label>
         </div>
 
-        <button type="submit" class="w-full bg-amber-900 hover:bg-amber-950 text-white font-semibold py-3 rounded-xl shadow-sm hover:shadow transition flex items-center justify-center gap-2 active:scale-[0.99]">
+        <button type="submit" class="w-full bg-amber-900 hover:bg-amber-950 dark:bg-amber-800 dark:hover:bg-amber-700 text-white font-semibold py-3 rounded-xl shadow-sm hover:shadow transition flex items-center justify-center gap-2 active:scale-[0.99]">
           <i class="fa-solid fa-check"></i>
           Spara uttag
         </button>
@@ -140,15 +148,15 @@
     </div>
 
     <!-- Lista över uttag -->
-    <div class="bg-white rounded-2xl p-5 shadow-sm border border-slate-200/80">
+    <div class="bg-white dark:bg-slate-900 rounded-2xl p-5 shadow-sm border border-slate-200/80 dark:border-slate-800">
       <div class="flex justify-between items-center mb-4">
-        <h2 class="text-base font-bold text-slate-900 flex items-center gap-2">
-          <div class="w-7 h-7 rounded-lg bg-slate-100 text-slate-700 flex items-center justify-center text-xs">
+        <h2 class="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
+          <div class="w-7 h-7 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 flex items-center justify-center text-xs">
             <i class="fa-solid fa-list"></i>
           </div>
           Alla uttag
         </h2>
-        <select id="filterSelect" onchange="renderEntries()" class="text-xs border border-slate-200 rounded-lg px-2.5 py-1.5 bg-slate-50 text-slate-600 font-medium focus:outline-none">
+        <select id="filterSelect" onchange="renderEntries()" class="text-xs border border-slate-200 dark:border-slate-700 rounded-lg px-2.5 py-1.5 bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-300 font-medium focus:outline-none">
           <option value="all">Alla uttag</option>
           <option value="unpaid">Endast obetalda</option>
           <option value="paid">Endast betalda</option>
@@ -163,29 +171,36 @@
   </main>
 
   <script>
-    // --- FIREBASE CONFIG (Gratis molndatabas) ---
+    // --- FIREBASE CONFIG ---
     const firebaseConfig = {
       databaseURL: "https://kottkassan-default-rtdb.europe-west1.firebasedatabase.app"
     };
     
-    // Initiera Firebase om det finns giltig konfiguration, annars fallback till localStorage
     let db = null;
     try {
       firebase.initializeApp(firebaseConfig);
       db = firebase.database();
     } catch(e) {
-      console.log("Körs i lokalt läge (localStorage fallback)");
+      console.log("Körs i lokalt läge");
     }
 
     let entries = [];
     let currentUser = localStorage.getItem('kottkassan_user') || 'Aron';
 
-    // Sätt dagens datum som standard i formuläret
+    // Initiera mörkt läge från sparad inställning
+    if (localStorage.getItem('kottkassan_dark') === 'true') {
+      document.documentElement.classList.add('dark');
+      document.getElementById('darkModeIcon').className = "fa-solid fa-sun text-amber-300";
+    } else {
+      document.documentElement.classList.remove('dark');
+      document.getElementById('darkModeIcon').className = "fa-solid fa-moon text-amber-300";
+    }
+
     document.getElementById('inputDate').valueAsDate = new Date();
     document.getElementById('currentUserLabel').innerText = currentUser;
     document.getElementById('inputName').value = currentUser;
 
-    // Lyssna på dataändringar i realtid
+    // Lyssna på data i realtid från Firebase
     if (db) {
       db.ref('entries').on('value', (snapshot) => {
         const data = snapshot.val();
@@ -195,17 +210,29 @@
             entries.push({ id: key, ...data[key] });
           });
         }
-        // Sortera efter datum (nyast först)
         entries.sort((a, b) => new Date(b.date) - new Date(a.date));
         updateStats();
         renderEntries();
+        
+        document.getElementById('syncIndicator').className = "inline-block w-2 h-2 rounded-full bg-emerald-400";
+        document.getElementById('syncText').innerText = "Synkad i realtid";
+      }, (error) => {
+        document.getElementById('syncIndicator').className = "inline-block w-2 h-2 rounded-full bg-amber-400";
+        document.getElementById('syncText').innerText = "Lokalt läge";
       });
     } else {
-      // Fallback om databas saknas
+      document.getElementById('syncIndicator').className = "inline-block w-2 h-2 rounded-full bg-amber-400";
+      document.getElementById('syncText').innerText = "Lokalt läge";
       const localData = localStorage.getItem('kottkassan_entries');
       if (localData) entries = JSON.parse(localData);
       updateStats();
       renderEntries();
+    }
+
+    function toggleDarkMode() {
+      const isDark = document.documentElement.classList.toggle('dark');
+      localStorage.setItem('kottkassan_dark', isDark);
+      document.getElementById('darkModeIcon').className = isDark ? "fa-solid fa-sun text-amber-300" : "fa-solid fa-moon text-amber-300";
     }
 
     function changeUser() {
@@ -222,16 +249,15 @@
       document.getElementById('inputName').value = name;
       document.querySelectorAll('.name-btn').forEach(btn => {
         if (btn.innerText === name) {
-          btn.className = "name-btn bg-amber-50 border-2 border-amber-600 text-amber-900 font-medium py-2 rounded-xl text-sm transition";
+          btn.className = "name-btn bg-amber-50 dark:bg-amber-950/40 border-2 border-amber-600 text-amber-900 dark:text-amber-200 font-medium py-2 rounded-xl text-sm transition";
         } else {
-          btn.className = "name-btn bg-slate-50 border border-slate-200 text-slate-700 font-medium py-2 rounded-xl text-sm transition";
+          btn.className = "name-btn bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 font-medium py-2 rounded-xl text-sm transition";
         }
       });
     }
 
     function calculatePrice() {
       const gram = parseFloat(document.getElementById('inputGram').value) || 0;
-      // 120 kr/kg = 0.12 kr/gram
       const price = Math.round(gram * 0.12);
       document.getElementById('inputPrice').value = price;
     }
@@ -267,7 +293,6 @@
         renderEntries();
       }
 
-      // Nollställ formulär
       document.getElementById('inputGram').value = '';
       document.getElementById('inputPrice').value = '';
       document.getElementById('inputNote').value = '';
@@ -281,7 +306,6 @@
     function togglePaid(id) {
       const entry = entries.find(e => e.id === id);
       if (!entry) return;
-
       const newPaidStatus = !entry.paid;
 
       if (db) {
@@ -315,7 +339,6 @@
       const totalGramUsed = entries.reduce((sum, e) => sum + (e.gram || 0), 0);
       const totalKgUsed = totalGramUsed / 1000;
       const remainingKg = Math.max(0, 60 - totalKgUsed);
-
       const totalUnpaid = entries.filter(e => !e.paid).reduce((sum, e) => sum + (e.price || 0), 0);
 
       document.getElementById('statRemainingKg').innerText = remainingKg.toLocaleString('sv-SE', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
@@ -332,39 +355,40 @@
 
       let filtered = entries;
       if (filter === 'unpaid') filtered = entries.filter(e => !e.paid);
+      if (filter === 'paid') filtered = entries.filter(e => !e.paid); // fallback
       if (filter === 'paid') filtered = entries.filter(e => e.paid);
 
       if (filtered.length === 0) {
-        listContainer.innerHTML = `<div class="text-center py-8 text-slate-400 text-sm">Inga uttag registrerade än.</div>`;
+        listContainer.innerHTML = `<div class="text-center py-8 text-slate-400 dark:text-slate-600 text-sm">Inga uttag registrerade än.</div>`;
         return;
       }
 
       listContainer.innerHTML = filtered.map(item => `
-        <div class="flex items-center justify-between p-3.5 bg-slate-50 border border-slate-200/70 rounded-xl">
+        <div class="flex items-center justify-between p-3.5 bg-slate-50 dark:bg-slate-800/60 border border-slate-200/70 dark:border-slate-800 rounded-xl">
           <div class="flex items-center gap-3">
-            <button onclick="togglePaid('${item.id}')" title="Klicka för att ändra betalning" class="w-9 h-9 rounded-xl flex items-center justify-center transition ${item.paid ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700 hover:bg-amber-200'}">
+            <button onclick="togglePaid('${item.id}')" title="Klicka för att ändra betalning" class="w-9 h-9 rounded-xl flex items-center justify-center transition ${item.paid ? 'bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-400' : 'bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-400 hover:bg-amber-200'}">
               <i class="fa-solid ${item.paid ? 'fa-check' : 'fa-clock'}"></i>
             </button>
             <div>
               <div class="flex items-center gap-2">
-                <span class="font-bold text-slate-800 text-sm">${item.name}</span>
-                <span class="text-xs bg-slate-200/60 text-slate-600 px-2 py-0.5 rounded-md font-medium">${item.gram} g</span>
+                <span class="font-bold text-slate-800 dark:text-slate-200 text-sm">${item.name}</span>
+                <span class="text-xs bg-slate-200/60 dark:bg-slate-700 text-slate-600 dark:text-slate-300 px-2 py-0.5 rounded-md font-medium">${item.gram} g</span>
               </div>
-              <div class="text-xs text-slate-400 mt-0.5 flex items-center gap-2">
+              <div class="text-xs text-slate-400 dark:text-slate-500 mt-0.5 flex items-center gap-2">
                 <span>${item.date}</span>
-                ${item.note ? `<span>•</span><span class="italic text-slate-500">${item.note}</span>` : ''}
+                ${item.note ? `<span>•</span><span class="italic text-slate-500 dark:text-slate-400">${item.note}</span>` : ''}
               </div>
             </div>
           </div>
 
           <div class="flex items-center gap-3">
             <div class="text-right">
-              <div class="font-bold text-slate-900 text-sm">${item.price} kr</div>
-              <span class="text-[10px] font-semibold uppercase px-1.5 py-0.5 rounded ${item.paid ? 'bg-emerald-50 text-emerald-600' : 'bg-amber-50 text-amber-600'}">
+              <div class="font-bold text-slate-900 dark:text-white text-sm">${item.price} kr</div>
+              <span class="text-[10px] font-semibold uppercase px-1.5 py-0.5 rounded ${item.paid ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400' : 'bg-amber-50 dark:bg-amber-950/40 text-amber-600 dark:text-amber-400'}">
                 ${item.paid ? 'Betald' : 'Obetald'}
               </span>
             </div>
-            <button onclick="deleteEntry('${item.id}')" class="text-slate-300 hover:text-red-500 p-1 text-xs transition">
+            <button onclick="deleteEntry('${item.id}')" class="text-slate-300 dark:text-slate-600 hover:text-red-500 p-1 text-xs transition">
               <i class="fa-solid fa-trash"></i>
             </button>
           </div>
