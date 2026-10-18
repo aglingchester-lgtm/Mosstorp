@@ -1,0 +1,518 @@
+<!DOCTYPE html>
+<html lang="sv" class="h-full bg-slate-50">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Köttkassan</title>
+  
+  <!-- PWA Web App Manifest -->
+  <link rel="manifest" href="data:application/json;base64,ewogICJuYW1lIjogIktvdHRrYXNzYW4iLAogICJzaG9ydF9uYW1lIjogIktvdHRrYXNzYW4iLAogICJzdGFydF91cmwiOiAiLiIsCiAgImRpc3BsYXkiOiAic3RhbmRhbG9uZSIsCiAgImJhY2tncm91bmRfY29sb3IiOiAiI2Y4ZmFmYyIsCiAgInRoZW1lX2NvbG9yIjogIiM5OTFiMWIiCiB9">
+  <meta name="theme-color" content="#991b1b">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Köttkassan">
+
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <!-- FontAwesome Icons -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+  <!-- Canvas Confetti Library -->
+  <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+
+  <!-- Firebase Compatibility Libraries -->
+  <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-database-compat.js"></script>
+
+  <style>
+    body {
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+      -webkit-tap-highlight-color: transparent;
+    }
+  </style>
+</head>
+<body class="h-full flex flex-col text-slate-800 antialiased">
+
+  <!-- Top Header -->
+  <header class="bg-red-900 text-white shadow-md sticky top-0 z-30">
+    <div class="max-w-xl mx-auto px-4 py-3 flex items-center justify-between">
+      <div class="flex items-center space-x-3">
+        <div class="bg-red-950/60 p-2.5 rounded-2xl text-red-200">
+          <i class="fa-solid fa-cow text-2xl"></i>
+        </div>
+        <div>
+          <h1 class="font-extrabold text-xl leading-tight tracking-tight">Köttkassan</h1>
+          <p class="text-xs text-red-200 flex items-center gap-1.5" id="syncStatus">
+            <span class="inline-block w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+            <span>Synkad i realtid</span>
+          </p>
+        </div>
+      </div>
+
+      <!-- User selector button -->
+      <button onclick="openUserModal()" class="flex items-center gap-2 bg-red-800/80 hover:bg-red-800 px-3.5 py-2 rounded-xl text-xs font-bold border border-red-700 transition active:scale-95">
+        <i class="fa-solid fa-user-circle text-base text-red-200"></i>
+        <span id="currentUserDisplay">Välj namn</span>
+      </button>
+    </div>
+  </header>
+
+  <!-- Installation / Download Banner for Seniors & Family -->
+  <div class="bg-amber-400 border-b border-amber-500 text-slate-900 px-4 py-2.5 shadow-sm">
+    <div class="max-w-xl mx-auto flex items-center justify-between gap-2">
+      <div class="flex items-center gap-2 text-xs font-bold">
+        <i class="fa-solid fa-mobile-screen-button text-lg text-amber-900"></i>
+        <span>Använd som app på mobilen!</span>
+      </div>
+      <button onclick="openInstallGuide()" class="bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold px-3 py-1.5 rounded-lg shadow transition active:scale-95 flex items-center gap-1.5">
+        <i class="fa-solid fa-download"></i>
+        <span>Installera</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- Main Container -->
+  <main class="flex-1 max-w-xl w-full mx-auto px-4 py-5 space-y-6 pb-28">
+
+    <!-- Progress & Dashboard Card -->
+    <section class="bg-white rounded-3xl p-5 shadow-sm border border-slate-200/80 space-y-4">
+      
+      <div class="flex justify-between items-start">
+        <div>
+          <span class="text-xs font-bold uppercase tracking-wider text-slate-400">Total tillgång (Nötkött)</span>
+          <h2 class="text-2xl font-black text-slate-900 mt-0.5">60,0 kg <span class="text-xs font-normal text-slate-500">(120 kr/kg)</span></h2>
+        </div>
+        <div class="text-right">
+          <span class="text-xs font-bold uppercase tracking-wider text-slate-400">Kvar i frysen</span>
+          <div class="text-2xl font-black text-red-900" id="statRemainingKg">60,0 kg</div>
+        </div>
+      </div>
+
+      <!-- Linear Consumption Bar -->
+      <div class="space-y-1.5">
+        <div class="flex justify-between text-xs font-bold text-slate-600">
+          <span>Uttaget: <span id="statTakenKg" class="text-slate-900">0,0 kg</span></span>
+          <span id="statPercentTaken">0%</span>
+        </div>
+        <div class="w-full bg-slate-100 h-4 rounded-full overflow-hidden p-0.5 border border-slate-200">
+          <div id="progressBar" class="bg-red-800 h-full rounded-full transition-all duration-500" style="width: 0%"></div>
+        </div>
+      </div>
+
+      <!-- Financial Overview Stats -->
+      <div class="grid grid-cols-2 gap-3 pt-2 border-t border-slate-100">
+        <div class="bg-slate-50 p-3 rounded-2xl border border-slate-100">
+          <div class="text-xs font-bold text-slate-400 uppercase">Totalt uttaget</div>
+          <div class="text-lg font-black text-slate-800 mt-0.5" id="statTotalCost">0 kr</div>
+        </div>
+        <div class="bg-amber-50 p-3 rounded-2xl border border-amber-100/80">
+          <div class="text-xs font-bold text-amber-700 uppercase">Obetalt just nu</div>
+          <div class="text-lg font-black text-amber-900 mt-0.5" id="statUnpaidCost">0 kr</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Form: Register Meat Withdrawal -->
+    <section class="bg-white rounded-3xl p-5 shadow-sm border border-slate-200/80 space-y-4">
+      <div class="flex items-center gap-2 border-b border-slate-100 pb-3">
+        <div class="bg-red-100 text-red-900 p-2 rounded-xl text-sm font-bold">
+          <i class="fa-solid fa-cart-plus"></i>
+        </div>
+        <h3 class="font-extrabold text-base text-slate-900">Registrera köttuttag</h3>
+      </div>
+
+      <form onsubmit="handleAddWithdrawal(event)" class="space-y-4">
+        <!-- Person & Date -->
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs font-bold uppercase text-slate-500 mb-1">Vem tar kött?</label>
+            <input type="text" id="inputName" placeholder="t.ex. Mamma" class="w-full px-3.5 py-2.5 border border-slate-300 rounded-xl text-sm font-semibold focus:ring-2 focus:ring-red-800 focus:outline-none" required>
+          </div>
+          <div>
+            <label class="block text-xs font-bold uppercase text-slate-500 mb-1">Datum</label>
+            <input type="date" id="inputDate" class="w-full px-3.5 py-2.5 border border-slate-300 rounded-xl text-sm font-semibold focus:ring-2 focus:ring-red-800 focus:outline-none" required>
+          </div>
+        </div>
+
+        <!-- Grams & Price Calculation -->
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs font-bold uppercase text-slate-500 mb-1">Vikt i Gram (g)</label>
+            <input type="number" id="inputGrams" placeholder="t.ex. 1500" step="50" min="1" oninput="calculatePrice()" class="w-full px-3.5 py-2.5 border border-slate-300 rounded-xl text-sm font-semibold focus:ring-2 focus:ring-red-800 focus:outline-none" required>
+          </div>
+          <div>
+            <label class="block text-xs font-bold uppercase text-slate-500 mb-1">Pris (0,12 kr/g)</label>
+            <div class="w-full px-3.5 py-2.5 bg-slate-100 border border-slate-200 rounded-xl text-sm font-black text-slate-800 flex items-center justify-between">
+              <span id="calculatedPrice">0</span>
+              <span class="text-xs text-slate-400 font-normal">kr</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Note & Payment Status -->
+        <div>
+          <label class="block text-xs font-bold uppercase text-slate-500 mb-1">Typ av kött / Anteckning</label>
+          <input type="text" id="inputNote" placeholder="t.ex. 2st Färs & Ryggbiff" class="w-full px-3.5 py-2.5 border border-slate-300 rounded-xl text-sm font-medium focus:ring-2 focus:ring-red-800 focus:outline-none">
+        </div>
+
+        <div class="flex items-center gap-3 bg-slate-50 p-3 rounded-2xl border border-slate-200/60">
+          <input type="checkbox" id="inputPaid" class="w-5 h-5 accent-red-800 rounded cursor-pointer">
+          <label for="inputPaid" class="text-sm font-bold text-slate-700 cursor-pointer select-none">
+            Betald direkt vid uttag
+          </label>
+        </div>
+
+        <button type="submit" class="w-full bg-red-900 hover:bg-red-950 text-white font-extrabold py-3.5 rounded-2xl shadow-md text-base transition active:scale-95 flex items-center justify-center gap-2">
+          <i class="fa-solid fa-check-circle"></i>
+          <span>Spara uttag</span>
+        </button>
+      </form>
+    </section>
+
+    <!-- History & Filtering Section -->
+    <section class="space-y-3">
+      <div class="flex items-center justify-between">
+        <h3 class="font-extrabold text-base text-slate-900 flex items-center gap-2">
+          <i class="fa-solid fa-list-check text-slate-500"></i> Alla Uttag
+        </h3>
+        
+        <!-- Filter Tabs -->
+        <select id="filterSelect" onchange="renderWithdrawals()" class="bg-white border border-slate-300 text-xs font-bold rounded-xl px-2.5 py-1.5 focus:outline-none text-slate-700 shadow-sm">
+          <option value="all">Alla uttag</option>
+          <option value="unpaid">Endast Obetalda</option>
+          <option value="paid">Endast Betalda</option>
+        </select>
+      </div>
+
+      <!-- List of Items -->
+      <div id="withdrawalsList" class="space-y-2.5">
+        <div class="text-center py-10 text-slate-400 text-sm">Laddar uttag...</div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- MODAL: User Select -->
+  <div id="userModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
+    <div class="bg-white rounded-3xl max-w-sm w-full p-6 shadow-2xl space-y-4">
+      <div class="text-center">
+        <div class="w-12 h-12 bg-red-100 text-red-900 rounded-2xl flex items-center justify-center mx-auto mb-2 text-2xl font-black">
+          <i class="fa-solid fa-user"></i>
+        </div>
+        <h3 class="text-lg font-extrabold text-slate-900">Vem använder appen?</h3>
+        <p class="text-xs text-slate-500">Välj ditt namn så fylls det i automatiskt när du registrerar kött.</p>
+      </div>
+
+      <div id="quickUserList" class="grid grid-cols-2 gap-2">
+        <button onclick="selectUser('Mamma')" class="p-3 border-2 border-slate-200 rounded-2xl font-bold text-slate-700 hover:border-red-800 hover:bg-red-50 text-center transition">Mamma</button>
+        <button onclick="selectUser('Pappa')" class="p-3 border-2 border-slate-200 rounded-2xl font-bold text-slate-700 hover:border-red-800 hover:bg-red-50 text-center transition">Pappa</button>
+      </div>
+
+      <form onsubmit="handleCustomUserSubmit(event)" class="space-y-2 pt-2 border-t border-slate-100">
+        <input type="text" id="customUserName" placeholder="Eller skriv ditt namn..." class="w-full px-4 py-3 border border-slate-300 rounded-xl text-sm font-semibold focus:ring-2 focus:ring-red-800 focus:outline-none" required>
+        <button type="submit" class="w-full bg-slate-900 text-white font-bold py-3 rounded-xl shadow transition">Spara min profil</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- MODAL: Easy PWA Guide for Seniors -->
+  <div id="installGuideModal" class="fixed inset-0 bg-slate-900/70 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
+    <div class="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl space-y-5 max-h-[90vh] overflow-y-auto">
+      <div class="flex items-center justify-between border-b border-slate-100 pb-3">
+        <h3 class="text-lg font-extrabold text-slate-900 flex items-center gap-2">
+          <i class="fa-solid fa-download text-red-800"></i> Installera på Mobilen
+        </h3>
+        <button onclick="closeInstallGuide()" class="text-slate-400 hover:text-slate-600 p-1">
+          <i class="fa-solid fa-xmark text-xl"></i>
+        </button>
+      </div>
+
+      <p class="text-sm text-slate-600 leading-relaxed">
+        Gör om sidan till en riktig app på hemskärmen! Följ de enkla stegen för din telefon:
+      </p>
+
+      <!-- iPhone Instructions -->
+      <div class="bg-slate-50 p-4 rounded-2xl border border-slate-200 space-y-2">
+        <div class="font-extrabold text-slate-900 text-sm flex items-center gap-2">
+          <i class="fa-brands fa-apple text-lg"></i> iPhone / iPad (Safari)
+        </div>
+        <ol class="text-xs text-slate-600 space-y-2 list-decimal list-inside font-medium">
+          <li>Tryck på <strong>Dela-knappen</strong> längst ned i Safari (rutan med pilen uppåt <i class="fa-solid fa-share-from-square text-blue-600"></i>).</li>
+          <li>Rulla ner i menyn och tryck på <strong>"Lägg till på hemskärmen"</strong>.</li>
+          <li>Tryck på <strong>"Lägg till"</strong> längst upp till höger. Klart!</li>
+        </ol>
+      </div>
+
+      <!-- Android Instructions -->
+      <div class="bg-slate-50 p-4 rounded-2xl border border-slate-200 space-y-2">
+        <div class="font-extrabold text-slate-900 text-sm flex items-center gap-2">
+          <i class="fa-brands fa-android text-emerald-600 text-lg"></i> Android (Chrome)
+        </div>
+        <ol class="text-xs text-slate-600 space-y-2 list-decimal list-inside font-medium">
+          <li>Tryck på de <strong>tre punkterna</strong> längst upp till höger <i class="fa-solid fa-ellipsis-vertical"></i>.</li>
+          <li>Välj <strong>"Lägg till på startskärmen"</strong> eller <strong>"Installera app"</strong>.</li>
+          <li>Bekräfta med <strong>"Lägg till"</strong>. Klart!</li>
+        </ol>
+      </div>
+
+      <button onclick="closeInstallGuide()" class="w-full bg-slate-900 text-white font-bold py-3.5 rounded-2xl shadow">
+        Jag förstår!
+      </button>
+    </div>
+  </div>
+
+  <!-- JavaScript & Firebase Realtime Database Sync -->
+  <script>
+    // Constants
+    const TOTAL_MEAT_KG = 60.0;
+    const PRICE_PER_KG = 120;
+    const PRICE_PER_GRAM = 0.12;
+
+    // Firebase Public Realtime DB for zero-configuration multi-device sync
+    const firebaseConfig = {
+      databaseURL: "https://kottkassan-default-rtdb.europe-west1.firebasedatabase.app"
+    };
+
+    if (!firebase.apps.length) {
+      firebase.initializeApp(firebaseConfig);
+    }
+    const db = firebase.database();
+
+    // App State
+    let currentUser = localStorage.getItem('kottkassan_user') || '';
+    let withdrawals = {};
+
+    window.onload = function() {
+      // Set today's date in form
+      document.getElementById('inputDate').value = new Date().toISOString().split('T')[0];
+
+      if (currentUser) {
+        document.getElementById('inputName').value = currentUser;
+        updateUserDisplay();
+      } else {
+        openUserModal();
+      }
+
+      listenToDatabase();
+    };
+
+    // -----------------------------------------------------------------
+    // FIREBASE SYNC WITH LOCALSTORAGE FALLBACK
+    // -----------------------------------------------------------------
+    function listenToDatabase() {
+      db.ref('withdrawals').on('value', (snapshot) => {
+        withdrawals = snapshot.val() || {};
+        // Also keep localStorage updated for offline backup
+        localStorage.setItem('kottkassan_offline_data', JSON.stringify(withdrawals));
+        renderWithdrawals();
+        updateDashboard();
+      }, (error) => {
+        console.warn("Firebase fallback to localStorage:", error);
+        const cached = localStorage.getItem('kottkassan_offline_data');
+        if (cached) withdrawals = JSON.parse(cached);
+        renderWithdrawals();
+        updateDashboard();
+      });
+    }
+
+    // -----------------------------------------------------------------
+    // CALCULATIONS & DASHBOARD
+    // -----------------------------------------------------------------
+    function calculatePrice() {
+      const grams = parseFloat(document.getElementById('inputGrams').value) || 0;
+      const price = Math.round(grams * PRICE_PER_GRAM);
+      document.getElementById('calculatedPrice').innerText = price;
+    }
+
+    function updateDashboard() {
+      const list = Object.values(withdrawals);
+      
+      const totalGrams = list.reduce((sum, item) => sum + (parseFloat(item.grams) || 0), 0);
+      const totalTakenKg = totalGrams / 1000;
+      const remainingKg = Math.max(0, TOTAL_MEAT_KG - totalTakenKg);
+      const percentTaken = Math.min(100, (totalTakenKg / TOTAL_MEAT_KG) * 100);
+
+      const totalCost = list.reduce((sum, item) => sum + (parseFloat(item.price) || 0), 0);
+      const unpaidCost = list.filter(item => !item.paid).reduce((sum, item) => sum + (parseFloat(item.price) || 0), 0);
+
+      // Render Dashboard
+      document.getElementById('statRemainingKg').innerText = remainingKg.toFixed(1).replace('.', ',') + ' kg';
+      document.getElementById('statTakenKg').innerText = totalTakenKg.toFixed(1).replace('.', ',') + ' kg';
+      document.getElementById('statPercentTaken').innerText = Math.round(percentTaken) + '%';
+      document.getElementById('progressBar').style.width = percentTaken + '%';
+
+      document.getElementById('statTotalCost').innerText = Math.round(totalCost) + ' kr';
+      document.getElementById('statUnpaidCost').innerText = Math.round(unpaidCost) + ' kr';
+    }
+
+    // -----------------------------------------------------------------
+    // WITHDRAWAL ACTIONS
+    // -----------------------------------------------------------------
+    function handleAddWithdrawal(e) {
+      e.preventDefault();
+      const name = document.getElementById('inputName').value.trim();
+      const date = document.getElementById('inputDate').value;
+      const grams = parseFloat(document.getElementById('inputGrams').value);
+      const note = document.getElementById('inputNote').value.trim();
+      const paid = document.getElementById('inputPaid').checked;
+
+      if (!name || isNaN(grams) || grams <= 0) return;
+
+      const price = Math.round(grams * PRICE_PER_GRAM);
+
+      const newItem = {
+        name,
+        date,
+        grams,
+        price,
+        note,
+        paid,
+        timestamp: Date.now()
+      };
+
+      // Save to Firebase
+      db.ref('withdrawals').push(newItem);
+
+      // Trigger celebratory confetti if marked paid
+      if (paid && typeof confetti === 'function') {
+        confetti({ particleCount: 70, spread: 60, origin: { y: 0.8 } });
+      }
+
+      // Reset fields
+      document.getElementById('inputGrams').value = '';
+      document.getElementById('inputNote').value = '';
+      document.getElementById('inputPaid').checked = false;
+      document.getElementById('calculatedPrice').innerText = '0';
+    }
+
+    function togglePaidStatus(id, currentPaidStatus) {
+      const newStatus = !currentPaidStatus;
+      db.ref('withdrawals/' + id).update({ paid: newStatus });
+
+      if (newStatus && typeof confetti === 'function') {
+        confetti({ particleCount: 80, spread: 70, origin: { y: 0.7 } });
+      }
+    }
+
+    function deleteWithdrawal(id) {
+      if (confirm('Vill du ta bort detta uttag?')) {
+        db.ref('withdrawals/' + id).remove();
+      }
+    }
+
+    // -----------------------------------------------------------------
+    // RENDER LIST & FILTERS
+    // -----------------------------------------------------------------
+    function renderWithdrawals() {
+      const container = document.getElementById('withdrawalsList');
+      const filter = document.getElementById('filterSelect').value;
+      const keys = Object.keys(withdrawals);
+
+      if (keys.length === 0) {
+        container.innerHTML = `
+          <div class="text-center py-12 bg-white rounded-3xl border border-dashed border-slate-300">
+            <i class="fa-solid fa-box-open text-4xl text-slate-300 mb-2"></i>
+            <p class="text-slate-600 font-bold text-sm">Inga registrerade köttuttag än.</p>
+            <p class="text-xs text-slate-400 mt-1">Fyll i formuläret ovan för att registrera ditt första uttag!</p>
+          </div>
+        `;
+        return;
+      }
+
+      let filteredKeys = keys.filter(key => {
+        const item = withdrawals[key];
+        if (filter === 'unpaid') return !item.paid;
+        if (filter === 'paid') return item.paid;
+        return true;
+      });
+
+      if (filteredKeys.length === 0) {
+        container.innerHTML = `<div class="text-center py-8 text-slate-400 text-xs">Inga uttag matchar filtret.</div>`;
+        return;
+      }
+
+      container.innerHTML = filteredKeys.map(key => {
+        const item = withdrawals[key];
+        const kg = (item.grams / 1000).toFixed(1).replace('.', ',');
+
+        return `
+          <div class="bg-white p-4 rounded-2xl shadow-sm border border-slate-200/80 flex items-center justify-between gap-3">
+            <div class="space-y-1">
+              <div class="flex items-center gap-2">
+                <span class="font-extrabold text-slate-900 text-base">${escapeHtml(item.name)}</span>
+                <span class="text-[11px] font-bold px-2 py-0.5 rounded-full ${item.paid ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'}">
+                  ${item.paid ? '<i class="fa-solid fa-check text-xs"></i> Betald' : 'Obetald'}
+                </span>
+              </div>
+              <div class="text-xs font-semibold text-slate-500 flex items-center gap-2">
+                <span><i class="fa-regular fa-calendar text-slate-400"></i> ${item.date || ''}</span>
+                <span>•</span>
+                <span>${item.grams} g (${kg} kg)</span>
+              </div>
+              ${item.note ? `<p class="text-xs italic text-slate-500 font-medium">${escapeHtml(item.note)}</p>` : ''}
+            </div>
+
+            <div class="flex items-center gap-2">
+              <div class="text-right">
+                <div class="text-lg font-black text-slate-900">${item.price} kr</div>
+                <button onclick="togglePaidStatus('${key}', ${item.paid})" class="text-[11px] font-bold underline ${item.paid ? 'text-slate-400 hover:text-slate-600' : 'text-emerald-700 hover:text-emerald-900'}">
+                  ${item.paid ? 'Markera obetald' : 'Markera betald'}
+                </button>
+              </div>
+              <button onclick="deleteWithdrawal('${key}')" class="text-slate-300 hover:text-red-700 p-2 text-sm transition">
+                <i class="fa-solid fa-trash-can"></i>
+              </button>
+            </div>
+          </div>
+        `;
+      }).reverse().join('');
+    }
+
+    // -----------------------------------------------------------------
+    // USER PROFILES & MODALS
+    // -----------------------------------------------------------------
+    function openUserModal() {
+      document.getElementById('userModal').classList.remove('hidden');
+    }
+
+    function closeUserModal() {
+      document.getElementById('userModal').classList.add('hidden');
+    }
+
+    function selectUser(name) {
+      currentUser = name;
+      localStorage.setItem('kottkassan_user', name);
+      document.getElementById('inputName').value = name;
+      updateUserDisplay();
+      closeUserModal();
+    }
+
+    function handleCustomUserSubmit(e) {
+      e.preventDefault();
+      const val = document.getElementById('customUserName').value.trim();
+      if (val) {
+        selectUser(val);
+        document.getElementById('customUserName').value = '';
+      }
+    }
+
+    function updateUserDisplay() {
+      document.getElementById('currentUserDisplay').innerText = currentUser || 'Välj namn';
+    }
+
+    function openInstallGuide() {
+      document.getElementById('installGuideModal').classList.remove('hidden');
+    }
+
+    function closeInstallGuide() {
+      document.getElementById('installGuideModal').classList.add('hidden');
+    }
+
+    function escapeHtml(text) {
+      if (!text) return '';
+      return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
+    }
+  </script>
+</body>
+</html>
