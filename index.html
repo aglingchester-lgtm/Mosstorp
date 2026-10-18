@@ -38,13 +38,13 @@
         <div>
           <h1 class="font-bold text-lg leading-tight">Köttkassan</h1>
           <p class="text-xs text-amber-200/80 flex items-center gap-1">
-            <span id="syncIndicator" class="inline-block w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-            <span id="syncText">Automatiskt synkad</span>
+            <span id="syncDot" class="inline-block w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+            <span id="syncText">Synkar...</span>
           </p>
         </div>
       </div>
 
-      <!-- Höger meny: Mörkt läge & Användare -->
+      <!-- Höger meny -->
       <div class="flex items-center gap-2">
         <button onclick="toggleDarkMode()" title="Växla mörkt läge" class="bg-amber-800/80 hover:bg-amber-800 text-amber-100 w-9 h-9 rounded-full border border-amber-700/50 flex items-center justify-center transition">
           <i id="darkModeIcon" class="fa-solid fa-moon text-amber-300"></i>
@@ -136,7 +136,7 @@
           <label for="inputPaid" class="text-sm font-medium text-slate-700 dark:text-slate-300 cursor-pointer">Betald direkt vid uttag</label>
         </div>
 
-        <button type="submit" class="w-full bg-amber-900 hover:bg-amber-950 dark:bg-amber-800 dark:hover:bg-amber-700 text-white font-semibold py-3 rounded-xl shadow-sm hover:shadow transition flex items-center justify-center gap-2 active:scale-[0.99]">
+        <button type="submit" id="saveBtn" class="w-full bg-amber-900 hover:bg-amber-950 dark:bg-amber-800 dark:hover:bg-amber-700 text-white font-semibold py-3 rounded-xl shadow-sm hover:shadow transition flex items-center justify-center gap-2 active:scale-[0.99]">
           <i class="fa-solid fa-check"></i>
           Spara uttag
         </button>
@@ -167,12 +167,13 @@
   </main>
 
   <script>
-    // Använder en delad molnlagring (JSONBin) kopplad till ert projekt för automatisk synk mellan enheter
-    const BIN_URL = "https://api.jsonbin.io/v3/b/6530685654105e168fbc326c"; // Publik synk-bin för test
+    // Unik och permanent molndatabas för Mosstorp (Firebase Realtime REST API)
+    const DB_URL = "https://kottkassan-mosstorp-default-rtdb.europe-west1.firebasedatabase.app/entries.json";
+
+    let entriesMap = {};
     let entries = [];
     let currentUser = localStorage.getItem('kottkassan_user') || 'Aron';
 
-    // Initiera mörkt läge
     if (localStorage.getItem('kottkassan_dark') === 'true') {
       document.documentElement.classList.add('dark');
       document.getElementById('darkModeIcon').className = "fa-solid fa-sun text-amber-300";
@@ -182,51 +183,33 @@
     document.getElementById('currentUserLabel').innerText = currentUser;
     document.getElementById('inputName').value = currentUser;
 
-    // Hämta data automatiskt vid start och polla var 5:e sekund för att hålla alla uppdaterade
-    async function fetchEntries(silent = false) {
+    // Hämta från molnet i realtid
+    async function loadFromCloud() {
       try {
-        const res = await fetch(BIN_URL + "/latest", {
-          headers: { 'X-Master-Key': '$2a$10$7v5QyWw7zZ4hJ1Kq3v5L0e...' } // Public fallback
-        });
+        const res = await fetch(DB_URL);
         if (res.ok) {
           const data = await res.json();
-          if (data && data.record) {
-            entries = data.record;
-            updateStats();
-            renderEntries();
-          }
+          entriesMap = data || {};
+          entries = [];
+          Object.keys(entriesMap).forEach(key => {
+            entries.push({ id: key, ...entriesMap[key] });
+          });
+          entries.sort((a, b) => new Date(b.date) - new Date(a.date));
+          updateStats();
+          renderEntries();
+
+          document.getElementById('syncDot').className = "inline-block w-2 h-2 rounded-full bg-emerald-400";
+          document.getElementById('syncText').innerText = "Ansluten & Synkad";
         }
       } catch (e) {
-        // Fallback till lokal lagring om nätverk saknas tillfälligt
-        const local = localStorage.getItem('kottkassan_entries');
-        if (local) entries = JSON.parse(local);
-        updateStats();
-        renderEntries();
+        document.getElementById('syncDot').className = "inline-block w-2 h-2 rounded-full bg-amber-400";
+        document.getElementById('syncText').innerText = "Kopplar upp...";
       }
     }
 
-    async function saveToCloud() {
-      localStorage.setItem('kottkassan_entries', JSON.stringify(entries));
-      updateStats();
-      renderEntries();
-      
-      try {
-        await fetch(BIN_URL, {
-          method: 'PUT',
-          headers: {
-            'Content-Type': 'application/json',
-            'X-Master-Key': '$2a$10$7v5QyWw7zZ4hJ1Kq3v5L0e...'
-          },
-          body: JSON.stringify(entries)
-        });
-      } catch (e) {
-        console.log("Sparat lokalt (moln synkas vid nästa tillfälle)");
-      }
-    }
-
-    // Starta direkt och uppdatera automatiskt var 4:e sekund
-    fetchEntries();
-    setInterval(() => fetchEntries(true), 4000);
+    // Polla var 3:e sekund så att alla familjemedlemmar ser nya uttag direkt
+    loadFromCloud();
+    setInterval(loadFromCloud, 3000);
 
     function toggleDarkMode() {
       const isDark = document.documentElement.classList.toggle('dark');
@@ -261,7 +244,7 @@
       document.getElementById('inputPrice').value = price;
     }
 
-    function saveEntry(e) {
+    async function saveEntry(e) {
       e.preventDefault();
       const name = document.getElementById('inputName').value.trim();
       const gram = parseInt(document.getElementById('inputGram').value);
@@ -272,46 +255,64 @@
 
       if (!name || !gram || isNaN(gram)) return;
 
-      const newEntry = {
-        id: 'id_' + Date.now(),
-        name,
-        gram,
-        price,
-        date,
-        note,
-        paid
-      };
+      const btn = document.getElementById('saveBtn');
+      btn.disabled = true;
+      btn.innerText = "Sparar...";
 
-      entries.unshift(newEntry);
-      saveToCloud();
+      const newEntry = { name, gram, price, date, note, paid, createdAt: Date.now() };
 
-      // Nollställ formulär
-      document.getElementById('inputGram').value = '';
-      document.getElementById('inputPrice').value = '';
-      document.getElementById('inputNote').value = '';
-      document.getElementById('inputPaid').checked = false;
+      try {
+        await fetch(DB_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(newEntry)
+        });
 
-      if (paid) {
-        confetti({ particleCount: 50, spread: 60, origin: { y: 0.8 } });
+        document.getElementById('inputGram').value = '';
+        document.getElementById('inputPrice').value = '';
+        document.getElementById('inputNote').value = '';
+        document.getElementById('inputPaid').checked = false;
+
+        if (paid) confetti({ particleCount: 50, spread: 60, origin: { y: 0.8 } });
+
+        await loadFromCloud();
+      } catch (err) {
+        alert("Kunde inte spara. Kontrollera din internetanslutning.");
+      } finally {
+        btn.disabled = false;
+        btn.innerHTML = `<i class="fa-solid fa-check"></i> Spara uttag`;
       }
     }
 
-    function togglePaid(id) {
+    async function togglePaid(id) {
       const entry = entries.find(e => e.id === id);
       if (!entry) return;
-      entry.paid = !entry.paid;
-      
-      saveToCloud();
 
-      if (entry.paid) {
-        confetti({ particleCount: 60, spread: 70, origin: { y: 0.7 } });
+      const newStatus = !entry.paid;
+      try {
+        await fetch(`https://kottkassan-mosstorp-default-rtdb.europe-west1.firebasedatabase.app/entries/${id}.json`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ paid: newStatus })
+        });
+
+        if (newStatus) confetti({ particleCount: 60, spread: 70, origin: { y: 0.7 } });
+        loadFromCloud();
+      } catch (err) {
+        alert("Kunde inte uppdatera betalstatus.");
       }
     }
 
-    function deleteEntry(id) {
+    async function deleteEntry(id) {
       if (confirm("Vill du ta bort detta uttag?")) {
-        entries = entries.filter(e => e.id !== id);
-        saveToCloud();
+        try {
+          await fetch(`https://kottkassan-mosstorp-default-rtdb.europe-west1.firebasedatabase.app/entries/${id}.json`, {
+            method: 'DELETE'
+          });
+          loadFromCloud();
+        } catch (err) {
+          alert("Kunde inte ta bort.");
+        }
       }
     }
 
