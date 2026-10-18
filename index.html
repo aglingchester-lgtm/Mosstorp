@@ -167,214 +167,258 @@
   </main>
 
   <script>
-    // Unik och permanent molndatabas för Mosstorp (Firebase Realtime REST API)
-    const DB_URL = "https://kottkassan-mosstorp-default-rtdb.europe-west1.firebasedatabase.app/entries.json";
+// ===== Köttkassan: lokal lagring + molnsynk =====
+const BASE_URL = "https://kottkassan-mosstorp-default-rtdb.europe-west1.firebasedatabase.app/entries";
+const DB_URL = BASE_URL + ".json";
 
-    let entriesMap = {};
-    let entries = [];
-    let currentUser = localStorage.getItem('kottkassan_user') || 'Aron';
+function readLS(key, fallback) {
+  try { const v = localStorage.getItem(key); return v ? JSON.parse(v) : fallback; }
+  catch (e) { return fallback; }
+}
+function writeLS(key, val) {
+  try { localStorage.setItem(key, JSON.stringify(val)); } catch (e) {}
+}
 
-    if (localStorage.getItem('kottkassan_dark') === 'true') {
-      document.documentElement.classList.add('dark');
-      document.getElementById('darkModeIcon').className = "fa-solid fa-sun text-amber-300";
-    }
+// Läs sparad data direkt vid start, så inget försvinner vid uppdatering
+let entries = readLS('kk_entries', []);
+let pending = readLS('kk_pending', []);   // ändringar som ännu inte nått molnet
+let currentUser = localStorage.getItem('kottkassan_user') || 'Aron';
+let syncing = false;
 
-    document.getElementById('inputDate').valueAsDate = new Date();
+function persist() {
+  writeLS('kk_entries', entries);
+  writeLS('kk_pending', pending);
+}
+
+if (localStorage.getItem('kottkassan_dark') === 'true') {
+  document.documentElement.classList.add('dark');
+  document.getElementById('darkModeIcon').className = "fa-solid fa-sun text-amber-300";
+}
+
+document.getElementById('inputDate').valueAsDate = new Date();
+document.getElementById('currentUserLabel').innerText = currentUser;
+document.getElementById('inputName').value = currentUser;
+
+function setSync(ok, text) {
+  document.getElementById('syncDot').className =
+    "inline-block w-2 h-2 rounded-full " + (ok ? "bg-emerald-400" : "bg-amber-400");
+  document.getElementById('syncText').innerText = text;
+}
+
+// Skicka väntande ändringar till molnet
+async function flushPending() {
+  const rest = [];
+  for (const op of pending) {
+    try {
+      let r;
+      if (op.type === 'create') {
+        r = await fetch(DB_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(op.entry) });
+      } else if (op.type === 'patch') {
+        r = await fetch(`${BASE_URL}/${op.id}.json`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(op.data) });
+      } else {
+        r = await fetch(`${BASE_URL}/${op.id}.json`, { method: 'DELETE' });
+      }
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+    } catch (e) { rest.push(op); }
+  }
+  pending = rest;
+}
+
+// Lägg väntande ändringar ovanpå molndatan
+function applyPending(list) {
+  pending.forEach(op => {
+    if (op.type === 'create') list.push({ id: op.localId, ...op.entry });
+    else if (op.type === 'patch') { const x = list.find(e => e.id === op.id); if (x) Object.assign(x, op.data); }
+    else if (op.type === 'delete') list = list.filter(e => e.id !== op.id);
+  });
+  return list;
+}
+
+async function loadFromCloud() {
+  if (syncing) return;
+  syncing = true;
+  try {
+    await flushPending();
+    const res = await fetch(DB_URL);
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const data = await res.json() || {};
+    let list = Object.keys(data).map(k => ({ id: k, ...data[k] }));
+    list = applyPending(list);
+    list.sort((a, b) => new Date(b.date) - new Date(a.date) || (b.createdAt || 0) - (a.createdAt || 0));
+    entries = list;
+    persist();
+    setSync(true, pending.length ? `Väntar på synk (${pending.length})` : "Ansluten & Synkad");
+  } catch (e) {
+    persist();
+    setSync(false, pending.length ? `Offline – ${pending.length} osparade` : "Offline – visar sparad data");
+  } finally {
+    syncing = false;
+    updateStats();
+    renderEntries();
+  }
+}
+
+// Visa sparad data direkt, synka sedan
+updateStats();
+renderEntries();
+loadFromCloud();
+setInterval(loadFromCloud, 3000);
+
+function toggleDarkMode() {
+  const isDark = document.documentElement.classList.toggle('dark');
+  localStorage.setItem('kottkassan_dark', isDark);
+  document.getElementById('darkModeIcon').className = isDark ? "fa-solid fa-sun text-amber-300" : "fa-solid fa-moon text-amber-300";
+}
+
+function changeUser() {
+  const newUser = prompt("Skriv in ditt namn:", currentUser);
+  if (newUser && newUser.trim() !== "") {
+    currentUser = newUser.trim();
+    localStorage.setItem('kottkassan_user', currentUser);
     document.getElementById('currentUserLabel').innerText = currentUser;
-    document.getElementById('inputName').value = currentUser;
+    selectName(currentUser);
+  }
+}
 
-    // Hämta från molnet i realtid
-    async function loadFromCloud() {
-      try {
-        const res = await fetch(DB_URL);
-        if (res.ok) {
-          const data = await res.json();
-          entriesMap = data || {};
-          entries = [];
-          Object.keys(entriesMap).forEach(key => {
-            entries.push({ id: key, ...entriesMap[key] });
-          });
-          entries.sort((a, b) => new Date(b.date) - new Date(a.date));
-          updateStats();
-          renderEntries();
-
-          document.getElementById('syncDot').className = "inline-block w-2 h-2 rounded-full bg-emerald-400";
-          document.getElementById('syncText').innerText = "Ansluten & Synkad";
-        }
-      } catch (e) {
-        document.getElementById('syncDot').className = "inline-block w-2 h-2 rounded-full bg-amber-400";
-        document.getElementById('syncText').innerText = "Kopplar upp...";
-      }
+function selectName(name) {
+  document.getElementById('inputName').value = name;
+  document.querySelectorAll('.name-btn').forEach(btn => {
+    if (btn.innerText === name) {
+      btn.className = "name-btn bg-amber-50 dark:bg-amber-950/40 border-2 border-amber-600 text-amber-900 dark:text-amber-200 font-medium py-2 rounded-xl text-sm transition";
+    } else {
+      btn.className = "name-btn bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 font-medium py-2 rounded-xl text-sm transition";
     }
+  });
+}
 
-    // Polla var 3:e sekund så att alla familjemedlemmar ser nya uttag direkt
-    loadFromCloud();
-    setInterval(loadFromCloud, 3000);
+function calculatePrice() {
+  const gram = parseFloat(document.getElementById('inputGram').value) || 0;
+  document.getElementById('inputPrice').value = Math.round(gram * 0.12);
+}
 
-    function toggleDarkMode() {
-      const isDark = document.documentElement.classList.toggle('dark');
-      localStorage.setItem('kottkassan_dark', isDark);
-      document.getElementById('darkModeIcon').className = isDark ? "fa-solid fa-sun text-amber-300" : "fa-solid fa-moon text-amber-300";
-    }
+async function saveEntry(e) {
+  e.preventDefault();
+  const name = document.getElementById('inputName').value.trim();
+  const gram = parseInt(document.getElementById('inputGram').value);
+  const price = parseInt(document.getElementById('inputPrice').value);
+  const date = document.getElementById('inputDate').value;
+  const note = document.getElementById('inputNote').value.trim();
+  const paid = document.getElementById('inputPaid').checked;
 
-    function changeUser() {
-      const newUser = prompt("Skriv in ditt namn:", currentUser);
-      if (newUser && newUser.trim() !== "") {
-        currentUser = newUser.trim();
-        localStorage.setItem('kottkassan_user', currentUser);
-        document.getElementById('currentUserLabel').innerText = currentUser;
-        selectName(currentUser);
-      }
-    }
+  if (!name || !gram || isNaN(gram)) return;
 
-    function selectName(name) {
-      document.getElementById('inputName').value = name;
-      document.querySelectorAll('.name-btn').forEach(btn => {
-        if (btn.innerText === name) {
-          btn.className = "name-btn bg-amber-50 dark:bg-amber-950/40 border-2 border-amber-600 text-amber-900 dark:text-amber-200 font-medium py-2 rounded-xl text-sm transition";
-        } else {
-          btn.className = "name-btn bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 font-medium py-2 rounded-xl text-sm transition";
-        }
-      });
-    }
+  const entry = { name, gram, price, date, note, paid, createdAt: Date.now() };
+  const localId = 'local_' + Date.now();
 
-    function calculatePrice() {
-      const gram = parseFloat(document.getElementById('inputGram').value) || 0;
-      const price = Math.round(gram * 0.12);
-      document.getElementById('inputPrice').value = price;
-    }
+  // Spara lokalt direkt – överlever uppdatering
+  entries.unshift({ id: localId, ...entry });
+  pending.push({ type: 'create', localId, entry });
+  persist();
 
-    async function saveEntry(e) {
-      e.preventDefault();
-      const name = document.getElementById('inputName').value.trim();
-      const gram = parseInt(document.getElementById('inputGram').value);
-      const price = parseInt(document.getElementById('inputPrice').value);
-      const date = document.getElementById('inputDate').value;
-      const note = document.getElementById('inputNote').value.trim();
-      const paid = document.getElementById('inputPaid').checked;
+  document.getElementById('inputGram').value = '';
+  document.getElementById('inputPrice').value = '';
+  document.getElementById('inputNote').value = '';
+  document.getElementById('inputPaid').checked = false;
+  if (paid) confetti({ particleCount: 50, spread: 60, origin: { y: 0.8 } });
 
-      if (!name || !gram || isNaN(gram)) return;
+  updateStats();
+  renderEntries();
+  loadFromCloud();
+}
 
-      const btn = document.getElementById('saveBtn');
-      btn.disabled = true;
-      btn.innerText = "Sparar...";
+function togglePaid(id) {
+  const entry = entries.find(e => e.id === id);
+  if (!entry) return;
+  const newStatus = !entry.paid;
+  entry.paid = newStatus;
 
-      const newEntry = { name, gram, price, date, note, paid, createdAt: Date.now() };
+  if (id.startsWith('local_')) {
+    const op = pending.find(o => o.type === 'create' && o.localId === id);
+    if (op) op.entry.paid = newStatus;
+  } else {
+    pending.push({ type: 'patch', id, data: { paid: newStatus } });
+  }
+  persist();
+  if (newStatus) confetti({ particleCount: 60, spread: 70, origin: { y: 0.7 } });
+  updateStats();
+  renderEntries();
+  loadFromCloud();
+}
 
-      try {
-        await fetch(DB_URL, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(newEntry)
-        });
+function deleteEntry(id) {
+  if (!confirm("Vill du ta bort detta uttag?")) return;
+  entries = entries.filter(e => e.id !== id);
 
-        document.getElementById('inputGram').value = '';
-        document.getElementById('inputPrice').value = '';
-        document.getElementById('inputNote').value = '';
-        document.getElementById('inputPaid').checked = false;
+  if (id.startsWith('local_')) {
+    pending = pending.filter(o => !(o.type === 'create' && o.localId === id));
+  } else {
+    pending = pending.filter(o => !(o.type === 'patch' && o.id === id));
+    pending.push({ type: 'delete', id });
+  }
+  persist();
+  updateStats();
+  renderEntries();
+  loadFromCloud();
+}
 
-        if (paid) confetti({ particleCount: 50, spread: 60, origin: { y: 0.8 } });
+function updateStats() {
+  const totalGramUsed = entries.reduce((sum, e) => sum + (e.gram || 0), 0);
+  const totalKgUsed = totalGramUsed / 1000;
+  const remainingKg = Math.max(0, 60 - totalKgUsed);
+  const totalUnpaid = entries.filter(e => !e.paid).reduce((sum, e) => sum + (e.price || 0), 0);
+  const fmt = { minimumFractionDigits: 1, maximumFractionDigits: 1 };
 
-        await loadFromCloud();
-      } catch (err) {
-        alert("Kunde inte spara. Kontrollera din internetanslutning.");
-      } finally {
-        btn.disabled = false;
-        btn.innerHTML = `<i class="fa-solid fa-check"></i> Spara uttag`;
-      }
-    }
+  document.getElementById('statRemainingKg').innerText = remainingKg.toLocaleString('sv-SE', fmt);
+  document.getElementById('statUsedKg').innerText = `Uttaget: ${totalKgUsed.toLocaleString('sv-SE', fmt)} kg`;
+  document.getElementById('statTotalUnpaid').innerText = `${totalUnpaid} kr`;
+  document.getElementById('progressBar').style.width = `${Math.min(100, (totalKgUsed / 60) * 100)}%`;
+}
 
-    async function togglePaid(id) {
-      const entry = entries.find(e => e.id === id);
-      if (!entry) return;
+function renderEntries() {
+  const filter = document.getElementById('filterSelect').value;
+  const listContainer = document.getElementById('entriesList');
 
-      const newStatus = !entry.paid;
-      try {
-        await fetch(`https://kottkassan-mosstorp-default-rtdb.europe-west1.firebasedatabase.app/entries/${id}.json`, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ paid: newStatus })
-        });
+  let filtered = entries;
+  if (filter === 'unpaid') filtered = entries.filter(e => !e.paid);
+  if (filter === 'paid') filtered = entries.filter(e => e.paid);
 
-        if (newStatus) confetti({ particleCount: 60, spread: 70, origin: { y: 0.7 } });
-        loadFromCloud();
-      } catch (err) {
-        alert("Kunde inte uppdatera betalstatus.");
-      }
-    }
+  if (filtered.length === 0) {
+    listContainer.innerHTML = `<div class="text-center py-8 text-slate-400 dark:text-slate-600 text-sm">Inga uttag registrerade än.</div>`;
+    return;
+  }
 
-    async function deleteEntry(id) {
-      if (confirm("Vill du ta bort detta uttag?")) {
-        try {
-          await fetch(`https://kottkassan-mosstorp-default-rtdb.europe-west1.firebasedatabase.app/entries/${id}.json`, {
-            method: 'DELETE'
-          });
-          loadFromCloud();
-        } catch (err) {
-          alert("Kunde inte ta bort.");
-        }
-      }
-    }
-
-    function updateStats() {
-      const totalGramUsed = entries.reduce((sum, e) => sum + (e.gram || 0), 0);
-      const totalKgUsed = totalGramUsed / 1000;
-      const remainingKg = Math.max(0, 60 - totalKgUsed);
-      const totalUnpaid = entries.filter(e => !e.paid).reduce((sum, e) => sum + (e.price || 0), 0);
-
-      document.getElementById('statRemainingKg').innerText = remainingKg.toLocaleString('sv-SE', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
-      document.getElementById('statUsedKg').innerText = `Uttaget: ${totalKgUsed.toLocaleString('sv-SE', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} kg`;
-      document.getElementById('statTotalUnpaid').innerText = `${totalUnpaid} kr`;
-
-      const progressPercent = Math.min(100, (totalKgUsed / 60) * 100);
-      document.getElementById('progressBar').style.width = `${progressPercent}%`;
-    }
-
-    function renderEntries() {
-      const filter = document.getElementById('filterSelect').value;
-      const listContainer = document.getElementById('entriesList');
-
-      let filtered = entries;
-      if (filter === 'unpaid') filtered = entries.filter(e => !e.paid);
-      if (filter === 'paid') filtered = entries.filter(e => e.paid);
-
-      if (filtered.length === 0) {
-        listContainer.innerHTML = `<div class="text-center py-8 text-slate-400 dark:text-slate-600 text-sm">Inga uttag registrerade än.</div>`;
-        return;
-      }
-
-      listContainer.innerHTML = filtered.map(item => `
-        <div class="flex items-center justify-between p-3.5 bg-slate-50 dark:bg-slate-800/60 border border-slate-200/70 dark:border-slate-800 rounded-xl">
-          <div class="flex items-center gap-3">
-            <button onclick="togglePaid('${item.id}')" title="Klicka för att ändra betalning" class="w-9 h-9 rounded-xl flex items-center justify-center transition ${item.paid ? 'bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-400' : 'bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-400 hover:bg-amber-200'}">
-              <i class="fa-solid ${item.paid ? 'fa-check' : 'fa-clock'}"></i>
-            </button>
-            <div>
-              <div class="flex items-center gap-2">
-                <span class="font-bold text-slate-800 dark:text-slate-200 text-sm">${item.name}</span>
-                <span class="text-xs bg-slate-200/60 dark:bg-slate-700 text-slate-600 dark:text-slate-300 px-2 py-0.5 rounded-md font-medium">${item.gram} g</span>
-              </div>
-              <div class="text-xs text-slate-400 dark:text-slate-500 mt-0.5 flex items-center gap-2">
-                <span>${item.date}</span>
-                ${item.note ? `<span>•</span><span class="italic text-slate-500 dark:text-slate-400">${item.note}</span>` : ''}
-              </div>
-            </div>
+  listContainer.innerHTML = filtered.map(item => `
+    <div class="flex items-center justify-between p-3.5 bg-slate-50 dark:bg-slate-800/60 border border-slate-200/70 dark:border-slate-800 rounded-xl">
+      <div class="flex items-center gap-3">
+        <button onclick="togglePaid('${item.id}')" title="Klicka för att ändra betalning" class="w-9 h-9 rounded-xl flex items-center justify-center transition ${item.paid ? 'bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-400' : 'bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-400 hover:bg-amber-200'}">
+          <i class="fa-solid ${item.paid ? 'fa-check' : 'fa-clock'}"></i>
+        </button>
+        <div>
+          <div class="flex items-center gap-2">
+            <span class="font-bold text-slate-800 dark:text-slate-200 text-sm">${item.name}</span>
+            <span class="text-xs bg-slate-200/60 dark:bg-slate-700 text-slate-600 dark:text-slate-300 px-2 py-0.5 rounded-md font-medium">${item.gram} g</span>
           </div>
-
-          <div class="flex items-center gap-3">
-            <div class="text-right">
-              <div class="font-bold text-slate-900 dark:text-white text-sm">${item.price} kr</div>
-              <span class="text-[10px] font-semibold uppercase px-1.5 py-0.5 rounded ${item.paid ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400' : 'bg-amber-50 dark:bg-amber-950/40 text-amber-600 dark:text-amber-400'}">
-                ${item.paid ? 'Betald' : 'Obetald'}
-              </span>
-            </div>
-            <button onclick="deleteEntry('${item.id}')" class="text-slate-300 dark:text-slate-600 hover:text-red-500 p-1 text-xs transition">
-              <i class="fa-solid fa-trash"></i>
-            </button>
+          <div class="text-xs text-slate-400 dark:text-slate-500 mt-0.5 flex items-center gap-2">
+            <span>${item.date}</span>
+            ${item.note ? `<span>•</span><span class="italic text-slate-500 dark:text-slate-400">${item.note}</span>` : ''}
           </div>
         </div>
-      `).join('');
-    }
+      </div>
+
+      <div class="flex items-center gap-3">
+        <div class="text-right">
+          <div class="font-bold text-slate-900 dark:text-white text-sm">${item.price} kr</div>
+          <span class="text-[10px] font-semibold uppercase px-1.5 py-0.5 rounded ${item.paid ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400' : 'bg-amber-50 dark:bg-amber-950/40 text-amber-600 dark:text-amber-400'}">
+            ${item.paid ? 'Betald' : 'Obetald'}
+          </span>
+        </div>
+        <button onclick="deleteEntry('${item.id}')" class="text-slate-300 dark:text-slate-600 hover:text-red-500 p-1 text-xs transition">
+          <i class="fa-solid fa-trash"></i>
+        </button>
+      </div>
+    </div>
+  `).join('');
+}
   </script>
 </body>
 </html>
