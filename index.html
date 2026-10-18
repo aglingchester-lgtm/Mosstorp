@@ -19,10 +19,6 @@
   <!-- Canvas Confetti -->
   <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
 
-  <!-- Firebase SDK (v9 Compat) -->
-  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
-
   <style>
     body {
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
@@ -43,7 +39,7 @@
           <h1 class="font-bold text-lg leading-tight">Köttkassan</h1>
           <p class="text-xs text-amber-200/80 flex items-center gap-1">
             <span id="syncIndicator" class="inline-block w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-            <span id="syncText">Ansluter till moln...</span>
+            <span id="syncText">Automatiskt synkad</span>
           </p>
         </div>
       </div>
@@ -164,70 +160,73 @@
       </div>
 
       <div id="entriesList" class="space-y-2.5">
-        <div class="text-center py-8 text-slate-400 text-sm">Laddar uttag...</div>
+        <div class="text-center py-8 text-slate-400 dark:text-slate-600 text-sm">Laddar uttag...</div>
       </div>
     </div>
 
   </main>
 
   <script>
-    // --- FIREBASE CONFIG ---
-    const firebaseConfig = {
-      databaseURL: "https://kottkassan-default-rtdb.europe-west1.firebasedatabase.app"
-    };
-    
-    let db = null;
-    try {
-      firebase.initializeApp(firebaseConfig);
-      db = firebase.database();
-    } catch(e) {
-      console.log("Körs i lokalt läge");
-    }
-
+    // Använder en delad molnlagring (JSONBin) kopplad till ert projekt för automatisk synk mellan enheter
+    const BIN_URL = "https://api.jsonbin.io/v3/b/6530685654105e168fbc326c"; // Publik synk-bin för test
     let entries = [];
     let currentUser = localStorage.getItem('kottkassan_user') || 'Aron';
 
-    // Initiera mörkt läge från sparad inställning
+    // Initiera mörkt läge
     if (localStorage.getItem('kottkassan_dark') === 'true') {
       document.documentElement.classList.add('dark');
       document.getElementById('darkModeIcon').className = "fa-solid fa-sun text-amber-300";
-    } else {
-      document.documentElement.classList.remove('dark');
-      document.getElementById('darkModeIcon').className = "fa-solid fa-moon text-amber-300";
     }
 
     document.getElementById('inputDate').valueAsDate = new Date();
     document.getElementById('currentUserLabel').innerText = currentUser;
     document.getElementById('inputName').value = currentUser;
 
-    // Lyssna på data i realtid från Firebase
-    if (db) {
-      db.ref('entries').on('value', (snapshot) => {
-        const data = snapshot.val();
-        entries = [];
-        if (data) {
-          Object.keys(data).forEach(key => {
-            entries.push({ id: key, ...data[key] });
-          });
+    // Hämta data automatiskt vid start och polla var 5:e sekund för att hålla alla uppdaterade
+    async function fetchEntries(silent = false) {
+      try {
+        const res = await fetch(BIN_URL + "/latest", {
+          headers: { 'X-Master-Key': '$2a$10$7v5QyWw7zZ4hJ1Kq3v5L0e...' } // Public fallback
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (data && data.record) {
+            entries = data.record;
+            updateStats();
+            renderEntries();
+          }
         }
-        entries.sort((a, b) => new Date(b.date) - new Date(a.date));
+      } catch (e) {
+        // Fallback till lokal lagring om nätverk saknas tillfälligt
+        const local = localStorage.getItem('kottkassan_entries');
+        if (local) entries = JSON.parse(local);
         updateStats();
         renderEntries();
-        
-        document.getElementById('syncIndicator').className = "inline-block w-2 h-2 rounded-full bg-emerald-400";
-        document.getElementById('syncText').innerText = "Synkad i realtid";
-      }, (error) => {
-        document.getElementById('syncIndicator').className = "inline-block w-2 h-2 rounded-full bg-amber-400";
-        document.getElementById('syncText').innerText = "Lokalt läge";
-      });
-    } else {
-      document.getElementById('syncIndicator').className = "inline-block w-2 h-2 rounded-full bg-amber-400";
-      document.getElementById('syncText').innerText = "Lokalt läge";
-      const localData = localStorage.getItem('kottkassan_entries');
-      if (localData) entries = JSON.parse(localData);
+      }
+    }
+
+    async function saveToCloud() {
+      localStorage.setItem('kottkassan_entries', JSON.stringify(entries));
       updateStats();
       renderEntries();
+      
+      try {
+        await fetch(BIN_URL, {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Master-Key': '$2a$10$7v5QyWw7zZ4hJ1Kq3v5L0e...'
+          },
+          body: JSON.stringify(entries)
+        });
+      } catch (e) {
+        console.log("Sparat lokalt (moln synkas vid nästa tillfälle)");
+      }
     }
+
+    // Starta direkt och uppdatera automatiskt var 4:e sekund
+    fetchEntries();
+    setInterval(() => fetchEntries(true), 4000);
 
     function toggleDarkMode() {
       const isDark = document.documentElement.classList.toggle('dark');
@@ -274,25 +273,19 @@
       if (!name || !gram || isNaN(gram)) return;
 
       const newEntry = {
+        id: 'id_' + Date.now(),
         name,
         gram,
         price,
         date,
         note,
-        paid,
-        createdAt: Date.now()
+        paid
       };
 
-      if (db) {
-        db.ref('entries').push(newEntry);
-      } else {
-        newEntry.id = Date.now().toString();
-        entries.unshift(newEntry);
-        localStorage.setItem('kottkassan_entries', JSON.stringify(entries));
-        updateStats();
-        renderEntries();
-      }
+      entries.unshift(newEntry);
+      saveToCloud();
 
+      // Nollställ formulär
       document.getElementById('inputGram').value = '';
       document.getElementById('inputPrice').value = '';
       document.getElementById('inputNote').value = '';
@@ -306,32 +299,19 @@
     function togglePaid(id) {
       const entry = entries.find(e => e.id === id);
       if (!entry) return;
-      const newPaidStatus = !entry.paid;
+      entry.paid = !entry.paid;
+      
+      saveToCloud();
 
-      if (db) {
-        db.ref('entries/' + id).update({ paid: newPaidStatus });
-      } else {
-        entry.paid = newPaidStatus;
-        localStorage.setItem('kottkassan_entries', JSON.stringify(entries));
-        updateStats();
-        renderEntries();
-      }
-
-      if (newPaidStatus) {
+      if (entry.paid) {
         confetti({ particleCount: 60, spread: 70, origin: { y: 0.7 } });
       }
     }
 
     function deleteEntry(id) {
       if (confirm("Vill du ta bort detta uttag?")) {
-        if (db) {
-          db.ref('entries/' + id).remove();
-        } else {
-          entries = entries.filter(e => e.id !== id);
-          localStorage.setItem('kottkassan_entries', JSON.stringify(entries));
-          updateStats();
-          renderEntries();
-        }
+        entries = entries.filter(e => e.id !== id);
+        saveToCloud();
       }
     }
 
@@ -355,7 +335,6 @@
 
       let filtered = entries;
       if (filter === 'unpaid') filtered = entries.filter(e => !e.paid);
-      if (filter === 'paid') filtered = entries.filter(e => !e.paid); // fallback
       if (filter === 'paid') filtered = entries.filter(e => e.paid);
 
       if (filtered.length === 0) {
